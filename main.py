@@ -1,25 +1,42 @@
 import streamlit as st
-from pythreejs import *
+import plotly.graph_objects as go
 import math
 import time
 import random
 
-st.set_page_config(page_title="Ultimate 3D Solar System", layout="wide")
-st.title("🌌 Ultimate Realistic 3D Solar System Simulation")
+# --- Page Setup ---
+st.set_page_config(page_title="3D Realistic Solar System", layout="wide")
+st.title("🌌 3D Realistic Solar System Simulation")
 
 # --- Sidebar Controls ---
 st.sidebar.title("⚙️ Controls")
-speed = st.sidebar.slider("Simulation Speed", 0.01, 0.5, 0.05)
+speed = st.sidebar.slider("Simulation Speed", 1, 50, 10)
 start_btn = st.sidebar.button("▶ Start")
 pause_btn = st.sidebar.button("⏸ Pause")
 reset_btn = st.sidebar.button("🔄 Reset")
 
-# --- Session State ---
+# --- Planet Data ---
+planets = [
+    {"name": "Mercury", "radius": 0.38, "distance": 0.39},
+    {"name": "Venus", "radius": 0.95, "distance": 0.72},
+    {"name": "Earth", "radius": 1.0, "distance": 1.0},
+    {"name": "Mars", "radius": 0.53, "distance": 1.52},
+    {"name": "Jupiter", "radius": 11.2, "distance": 5.20},
+    {"name": "Saturn", "radius": 9.45, "distance": 9.58},
+    {"name": "Uranus", "radius": 4.0, "distance": 19.18},
+    {"name": "Neptune", "radius": 3.88, "distance": 30.07}
+]
+
+distance_scale = 50
+radius_scale = 0.3
+
+# --- Initialize session state ---
 if "time" not in st.session_state:
     st.session_state.time = 0
 if "running" not in st.session_state:
     st.session_state.running = False
 
+# --- Button Logic ---
 if start_btn:
     st.session_state.running = True
 if pause_btn:
@@ -28,75 +45,75 @@ if reset_btn:
     st.session_state.running = False
     st.session_state.time = 0
 
-# --- Planet Data ---
-planets = [
-    {"name":"Mercury","radius":0.38,"distance":0.39,"texture":"https://upload.wikimedia.org/wikipedia/commons/4/4a/Mercury_in_true_color.jpg"},
-    {"name":"Venus","radius":0.95,"distance":0.72,"texture":"https://upload.wikimedia.org/wikipedia/commons/e/e5/Venus-real_color.jpg"},
-    {"name":"Earth","radius":1.0,"distance":1.0,"texture":"https://upload.wikimedia.org/wikipedia/commons/9/97/The_Earth_seen_from_Apollo_17.jpg","clouds":"https://upload.wikimedia.org/wikipedia/commons/e/ed/Blue_Marble_2002.png"},
-    {"name":"Mars","radius":0.53,"distance":1.52,"texture":"https://upload.wikimedia.org/wikipedia/commons/0/02/OSIRIS_Mars_true_color.jpg"},
-    {"name":"Jupiter","radius":11.2,"distance":5.20,"texture":"https://upload.wikimedia.org/wikipedia/commons/e/e2/Jupiter.jpg"},
-    {"name":"Saturn","radius":9.45,"distance":9.58,"texture":"https://upload.wikimedia.org/wikipedia/commons/2/29/Saturn_true_color.jpg","rings":"https://upload.wikimedia.org/wikipedia/commons/c/c7/Saturn_rings_texture.jpg"},
-    {"name":"Uranus","radius":4.0,"distance":19.18,"texture":"https://upload.wikimedia.org/wikipedia/commons/3/3d/Uranus2.jpg"},
-    {"name":"Neptune","radius":3.88,"distance":30.07,"texture":"https://upload.wikimedia.org/wikipedia/commons/5/56/Neptune_Full.jpg"},
-]
+# --- Create 3D Figure ---
+fig = go.Figure()
 
-distance_scale = 10
-radius_scale = 0.2
+# Add stars
+star_x = [random.uniform(-1500, 1500) for _ in range(200)]
+star_y = [random.uniform(-1500, 1500) for _ in range(200)]
+star_z = [random.uniform(-1500, 1500) for _ in range(200)]
+fig.add_trace(go.Scatter3d(
+    x=star_x, y=star_y, z=star_z,
+    mode='markers',
+    marker=dict(size=1, color='white'),
+    showlegend=False
+))
 
-# --- Scene and Lighting ---
-scene = Scene()
-scene.add(AmbientLight(intensity=0.5))
-sun_geom = SphereGeometry(radius=3)
-sun_mat = MeshStandardMaterial(color='yellow')
-sun = Mesh(geometry=sun_geom, material=sun_mat, position=[0,0,0])
-scene.add(sun)
+# Add Sun
+fig.add_trace(go.Scatter3d(
+    x=[0], y=[0], z=[0],
+    mode='markers+text',
+    marker=dict(size=30, color='yellow'),
+    text=["☀ Sun"], textposition="top center",
+    showlegend=False
+))
 
-# --- Add stars background ---
-for _ in range(200):
-    star = Mesh(
-        geometry=SphereGeometry(radius=0.1),
-        material=MeshStandardMaterial(color='white'),
-        position=[random.uniform(-150,150), random.uniform(-150,150), random.uniform(-150,150)]
-    )
-    scene.add(star)
+# Add planets and orbits
+for planet in planets:
+    angle = st.session_state.time * (0.05 / planet["distance"])
+    x = planet["distance"] * distance_scale * math.cos(angle)
+    y = planet["distance"] * distance_scale * math.sin(angle)
+    z = 0
 
-# --- Planets and special features ---
-planet_meshes = []
-for p in planets:
-    geom = SphereGeometry(radius=p["radius"]*radius_scale)
-    mat = MeshStandardMaterial(map=TextureLoader(texture=p["texture"]).texture)
-    mesh = Mesh(geometry=geom, material=mat)
-    
-    # Earth clouds layer
-    if "clouds" in p:
-        cloud_geom = SphereGeometry(radius=p["radius"]*radius_scale*1.02)
-        cloud_mat = MeshStandardMaterial(map=TextureLoader(texture=p["clouds"]).texture, transparent=True, opacity=0.5)
-        cloud_mesh = Mesh(geometry=cloud_geom, material=cloud_mat)
-        mesh.add(cloud_mesh)
-    
-    # Saturn rings
-    if "rings" in p:
-        ring_geom = RingGeometry(innerRadius=p["radius"]*radius_scale*1.1, outerRadius=p["radius"]*radius_scale*1.8)
-        ring_mat = MeshStandardMaterial(map=TextureLoader(texture=p["rings"]).texture, side="DoubleSide", transparent=True)
-        ring_mesh = Mesh(geometry=ring_geom, material=ring_mat, rotation=[math.pi/2,0,0])
-        mesh.add(ring_mesh)
-    
-    planet_meshes.append({"mesh":mesh, "distance":p["distance"]*distance_scale, "name":p["name"]})
-    scene.add(mesh)
+    # Planet marker
+    fig.add_trace(go.Scatter3d(
+        x=[x], y=[y], z=[z],
+        mode='markers+text',
+        marker=dict(size=planet["radius"]*radius_scale*10, color='white'),
+        text=[planet["name"]],
+        textposition="top center",
+        showlegend=False
+    ))
 
-# --- Camera ---
-camera = PerspectiveCamera(position=[50,50,50], fov=45)
-controls = OrbitControls(controlling=camera)
-renderer = Renderer(camera=camera, scene=scene, controls=[controls], width=900, height=650)
-st.components.v1.html(renderer.to_html(), height=700)
+    # Orbit line
+    orbit_theta = [i*0.1 for i in range(0,63)]
+    orbit_x = [planet["distance"]*distance_scale*math.cos(t) for t in orbit_theta]
+    orbit_y = [planet["distance"]*distance_scale*math.sin(t) for t in orbit_theta]
+    orbit_z = [0]*len(orbit_theta)
+    fig.add_trace(go.Scatter3d(
+        x=orbit_x, y=orbit_y, z=orbit_z,
+        mode='lines', line=dict(color='gray', width=1),
+        showlegend=False
+    ))
+
+# Layout
+fig.update_layout(
+    scene=dict(
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        zaxis=dict(visible=False),
+        aspectmode='data'
+    ),
+    margin=dict(l=0,r=0,t=0,b=0),
+    paper_bgcolor='black',
+    plot_bgcolor='black',
+    scene_camera=dict(eye=dict(x=1.5, y=1.5, z=1))
+)
+
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Animation ---
-while st.session_state.running:
-    st.session_state.time += speed
-    for p in planet_meshes:
-        angle = st.session_state.time / p["distance"]
-        p["mesh"].position = [p["distance"]*math.cos(angle), p["distance"]*math.sin(angle), 0]
-        # Rotate planets on axis
-        p["mesh"].rotation = [0, st.session_state.time, 0]
-    time.sleep(0.05)
+if st.session_state.running:
+    st.session_state.time += speed * 0.1
+    time.sleep(0.1)
     st.experimental_rerun()
